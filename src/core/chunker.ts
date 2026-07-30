@@ -4,6 +4,51 @@ export function getChunkCount(fileSize: number): number {
   return Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
 }
 
+export function stringToHash(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash >>> 0;
+}
+
+export function createBinaryChunkPacket(
+  fileIdHash: number,
+  chunkIndex: number,
+  totalChunks: number,
+  chunkData: ArrayBuffer
+): ArrayBuffer {
+  const packet = new ArrayBuffer(16 + chunkData.byteLength);
+  const view = new DataView(packet);
+  view.setUint32(0, 0x44524F50, false); // Magic "DROP"
+  view.setUint32(4, fileIdHash, false);
+  view.setUint32(8, chunkIndex, false);
+  view.setUint32(12, totalChunks, false);
+
+  new Uint8Array(packet, 16).set(new Uint8Array(chunkData));
+  return packet;
+}
+
+export function parseBinaryChunkPacket(buffer: ArrayBuffer): {
+  fileIdHash: number;
+  chunkIndex: number;
+  totalChunks: number;
+  chunkData: ArrayBuffer;
+} | null {
+  if (buffer.byteLength < 16) return null;
+  const view = new DataView(buffer);
+  const magic = view.getUint32(0, false);
+  if (magic !== 0x44524F50) return null;
+
+  const fileIdHash = view.getUint32(4, false);
+  const chunkIndex = view.getUint32(8, false);
+  const totalChunks = view.getUint32(12, false);
+  const chunkData = buffer.slice(16);
+
+  return { fileIdHash, chunkIndex, totalChunks, chunkData };
+}
+
 const globalChunkCache = new Map<string, Map<number, ArrayBuffer>>();
 
 export async function readChunk(file: File | Blob, chunkIndex: number): Promise<ArrayBuffer> {

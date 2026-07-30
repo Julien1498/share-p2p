@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ActiveTransfer, FileMetadata, P2PFileProtocolMessage, RoomMember } from '../core/types';
 import { FileTransferSession } from '../network/transferProtocol';
-import { createDirectDiskWriter, createNativeChromeDownloadWriter } from '../core/chunker';
+import { createDirectDiskWriter, createNativeChromeDownloadWriter, parseBinaryChunkPacket, stringToHash } from '../core/chunker';
 
 export interface ReceivedFileItem {
   id: string;
@@ -76,17 +76,93 @@ export function useFileTransfer(
     [peerManager, myPeerId, isHost]
   );
 
+  // Send raw ArrayBuffer for zero-copy binary streaming (maximum Fiber throughput)
+  const sendRawBinary = useCallback(
+    (targetPeerId: string, buffer: ArrayBuffer) => {
+      if (!peerManager) return;
+      const conn = peerManager.connections?.get(targetPeerId);
+      if (conn && conn.open) {
+        conn.send(buffer);
+      } else if (isHost) {
+        peerManager.broadcast(buffer);
+      }
+    },
+    [peerManager, isHost]
+  );
+
   const updateTransferState = useCallback((fileId: string, patch: Partial<ActiveTransfer>) => {
     setTransfers((prev) =>
       prev.map((t) => (t.fileId === fileId ? { ...t, ...patch } : t))
     );
   }, []);
 
+  // Handle incoming raw binary WebRTC chunk packets
+  const handleRawBinaryPacket = useCallback(
+    async (fromPeerId: string, buffer: ArrayBuffer) => {
+      const parsed = parseBinaryChunkPacket(buffer);
+      if (!parsed) return;
+
+      const { fileIdHash, chunkIndex, totalChunks, chunkData } = parsed;
+
+      for (const [fileId, item] of sessionsRef.current.entries()) {
+        if (stringToHash(fileId) === fileIdHash && item.session) {
+          const blob = await item.session.handleReceivedChunk(
+            chunkIndex,
+            totalChunks,
+            chunkData,
+            (bytesReceived, speed, eta) => {
+              updateTransferState(fileId, {
+                bytesTransferred: bytesReceived,
+                speedBytesPerSec: speed,
+                etaSeconds: eta,
+              });
+
+              const now = Date.now();
+              const lastAck = lastProgressAckRef.current.get(fileId) || 0;
+              if (now - lastAck >= 400 || chunkIndex === totalChunks - 1) {
+                lastProgressAckRef.current.set(fileId, now);
+                sendP2PData(item.session.transfer.peerId, {
+                  type: 'FILE_PROGRESS',
+                  fileId,
+                  bytesReceived,
+                });
+              }
+            }
+          );
+
+          if (blob) {
+            updateTransferState(fileId, {
+              status: 'completed',
+              checksumValidated: item.session.transfer.checksumValidated,
+            });
+
+            if (item.session.transfer.receivedBlobUrl) {
+              const newReceivedFile: ReceivedFileItem = {
+                id: fileId,
+                name: item.session.transfer.metadata.name,
+                size: item.session.transfer.metadata.size,
+                type: item.session.transfer.metadata.type,
+                blobUrl: item.session.transfer.receivedBlobUrl,
+                senderName: item.session.transfer.peerName,
+                receivedAt: Date.now(),
+                checksumValidated: !!item.session.transfer.checksumValidated,
+              };
+
+              setReceivedFiles((prev) => [newReceivedFile, ...prev]);
+            }
+          }
+          break;
+        }
+      }
+    },
+    [sendP2PData, updateTransferState]
+  );
+
   // Handle incoming protocol messages
   const handleP2PMessage = useCallback(
     async (fromPeerId: string, msg: P2PFileProtocolMessage) => {
       if (!msg || !msg.type || !msg.fileId) return;
-      const { type, fileId, metadata, chunkIndex, totalChunks, chunkData, bytesReceived, reason } = msg;
+      const { type, fileId, metadata, bytesReceived, reason } = msg;
 
       if (type === 'FILE_OFFER' && metadata) {
         const activeTransfer: ActiveTransfer = {
@@ -122,6 +198,7 @@ export function useFileTransfer(
           item.session
             .startSending(
               (targetId, data) => sendP2PData(targetId, data),
+              (targetId, buf) => sendRawBinary(targetId, buf),
               (bytesSent, speed, eta, rawSent, buffered) => {
                 updateTransferState(fileId, {
                   rawBytesSent: rawSent,
@@ -150,60 +227,9 @@ export function useFileTransfer(
           updateTransferState(fileId, { status: 'rejected', error: reason || 'Transfert refusé par le destinataire' });
         }
       } else if (type === 'FILE_PROGRESS' && bytesReceived !== undefined) {
-        // Sender updates bytesTransferred to EXACT ACK confirmed by Receiver
         const item = sessionsRef.current.get(fileId);
         if (item && item.session && item.session.transfer.status === 'transferring') {
           updateTransferState(fileId, { bytesTransferred: bytesReceived });
-        }
-      } else if (type === 'FILE_CHUNK' && chunkData && chunkIndex !== undefined && totalChunks !== undefined) {
-        const item = sessionsRef.current.get(fileId);
-        if (item && item.session) {
-          const blob = await item.session.handleReceivedChunk(
-            chunkIndex,
-            totalChunks,
-            chunkData,
-            (bytesReceived, speed, eta) => {
-              updateTransferState(fileId, {
-                bytesTransferred: bytesReceived,
-                speedBytesPerSec: speed,
-                etaSeconds: eta,
-              });
-
-              // Send periodic ACK to Sender so Sender progress is 100% synchronized
-              const now = Date.now();
-              const lastAck = lastProgressAckRef.current.get(fileId) || 0;
-              if (now - lastAck >= 400 || chunkIndex === totalChunks - 1) {
-                lastProgressAckRef.current.set(fileId, now);
-                sendP2PData(item.session.transfer.peerId, {
-                  type: 'FILE_PROGRESS',
-                  fileId,
-                  bytesReceived,
-                });
-              }
-            }
-          );
-
-          if (blob) {
-            updateTransferState(fileId, {
-              status: 'completed',
-              checksumValidated: item.session.transfer.checksumValidated,
-            });
-
-            if (item.session.transfer.receivedBlobUrl) {
-              const newReceivedFile: ReceivedFileItem = {
-                id: fileId,
-                name: item.session.transfer.metadata.name,
-                size: item.session.transfer.metadata.size,
-                type: item.session.transfer.metadata.type,
-                blobUrl: item.session.transfer.receivedBlobUrl,
-                senderName: item.session.transfer.peerName,
-                receivedAt: Date.now(),
-                checksumValidated: !!item.session.transfer.checksumValidated,
-              };
-
-              setReceivedFiles((prev) => [newReceivedFile, ...prev]);
-            }
-          }
         }
       } else if (type === 'TRANSFER_CANCEL') {
         const item = sessionsRef.current.get(fileId);
@@ -212,7 +238,6 @@ export function useFileTransfer(
           setTransfers((prev) =>
             prev.map((t) => {
               if (t.fileId === fileId) {
-                // If local user already cancelled this transfer, do not overwrite the local cancel reason
                 if (t.status === 'cancelled' && t.cancelReason) {
                   return t;
                 }
@@ -228,7 +253,7 @@ export function useFileTransfer(
         }
       }
     },
-    [sendP2PData, updateTransferState, peerManager]
+    [sendP2PData, sendRawBinary, updateTransferState, peerManager]
   );
 
   // Accept a pending file offer (triggers Chrome Native Download Bar Stream Bridge or Firefox Blob Accumulator)
@@ -289,6 +314,12 @@ export function useFileTransfer(
     const processPacket = (packet: any) => {
       if (!packet) return;
 
+      if (packet instanceof ArrayBuffer || packet?.byteLength || packet?.buffer) {
+        const rawBuf = packet.buffer || packet;
+        handleRawBinaryPacket(packet.senderPeerId || 'host', rawBuf);
+        return;
+      }
+
       if (packet.type === 'PEER_INFO_ANNOUNCE' && isHost) {
         membersMapRef.current.set(packet.peerId, {
           id: packet.peerId,
@@ -340,7 +371,7 @@ export function useFileTransfer(
       };
       peerManager.sendToHost('PEER_INFO_ANNOUNCE', { peerId: myPeerId, name: myPeerName });
     }
-  }, [peerManager, myPeerId, myPeerName, isHost, handleP2PMessage]);
+  }, [peerManager, myPeerId, myPeerName, isHost, handleP2PMessage, handleRawBinaryPacket]);
 
   // Host member management
   useEffect(() => {

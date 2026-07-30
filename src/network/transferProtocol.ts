@@ -1,4 +1,4 @@
-import { CHUNK_SIZE, DirectDiskWriter, getChunkCount, readChunkCached, reassembleChunks } from '../core/chunker';
+import { CHUNK_SIZE, DirectDiskWriter, createBinaryChunkPacket, getChunkCount, readChunkCached, reassembleChunks, stringToHash } from '../core/chunker';
 import { calculateSHA256, verifyChecksum } from '../core/checksum';
 import { ActiveTransfer, P2PFileProtocolMessage } from '../core/types';
 
@@ -44,12 +44,14 @@ export class FileTransferSession {
    */
   public async startSending(
     sendData: (peerId: string, data: P2PFileProtocolMessage) => void,
+    sendRawBinary: (peerId: string, buffer: ArrayBuffer) => void,
     onProgress: (bytesSent: number, speed: number, eta: number, rawSent?: number, buffered?: number) => void,
     getBufferedAmount?: () => number
   ): Promise<void> {
     if (!this.file) throw new Error('No file attached to transfer session');
 
     const totalChunks = getChunkCount(this.file.size);
+    const fileIdHash = stringToHash(this.activeTransfer.fileId);
     this.activeTransfer.status = 'transferring';
     this.activeTransfer.startTime = Date.now();
 
@@ -62,7 +64,7 @@ export class FileTransferSession {
     let lastTime = Date.now();
     let lastBytes = 0;
 
-    const MAX_BUFFERED_BYTES = 8 * 1024 * 1024; // 8 MB WebRTC socket window for Fiber throughput
+    const MAX_BUFFERED_BYTES = 16 * 1024 * 1024; // 16 MB WebRTC socket window for Fiber throughput
 
     for (let i = 0; i < totalChunks; i++) {
       if (this.isCancelled || this.activeTransfer.status === 'cancelled') {
@@ -83,15 +85,12 @@ export class FileTransferSession {
         }
       }
 
-      // Read chunk from shared in-memory cache to prevent re-reading from disk for multi-recipients
+      // Read chunk from shared in-memory cache
       const chunk = await readChunkCached(this.file, i);
-      sendData(this.activeTransfer.peerId, {
-        type: 'FILE_CHUNK',
-        fileId: this.activeTransfer.fileId,
-        chunkIndex: i,
-        totalChunks,
-        chunkData: chunk,
-      });
+      
+      // Zero-copy binary transmission (bypasses JS object serialization for maximum Fiber speed)
+      const binaryPacket = createBinaryChunkPacket(fileIdHash, i, totalChunks, chunk);
+      sendRawBinary(this.activeTransfer.peerId, binaryPacket);
 
       bytesSent += chunk.byteLength;
       
@@ -117,7 +116,7 @@ export class FileTransferSession {
         lastBytes = effectiveSent;
       }
 
-      if (i % 20 === 0) {
+      if (i % 40 === 0) {
         await yieldUnthrottled();
       }
     }
