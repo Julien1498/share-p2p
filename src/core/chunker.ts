@@ -4,11 +4,42 @@ export function getChunkCount(fileSize: number): number {
   return Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
 }
 
+const globalChunkCache = new Map<string, Map<number, ArrayBuffer>>();
+
 export async function readChunk(file: File | Blob, chunkIndex: number): Promise<ArrayBuffer> {
   const start = chunkIndex * CHUNK_SIZE;
   const end = Math.min(start + CHUNK_SIZE, file.size);
   const slice = file.slice(start, end);
   return await slice.arrayBuffer();
+}
+
+/**
+ * Shared in-memory chunk cache manager across concurrent P2P transfers of the same file.
+ */
+export async function readChunkCached(file: File | Blob, chunkIndex: number): Promise<ArrayBuffer> {
+  const fileKey = `${(file as File).name || 'file'}_${file.size}_${(file as File).lastModified || 0}`;
+  let fileCache = globalChunkCache.get(fileKey);
+  if (!fileCache) {
+    fileCache = new Map<number, ArrayBuffer>();
+    globalChunkCache.set(fileKey, fileCache);
+  }
+
+  if (fileCache.has(chunkIndex)) {
+    return fileCache.get(chunkIndex)!;
+  }
+
+  const chunk = await readChunk(file, chunkIndex);
+  
+  // Cache up to 100 MB (~1600 chunks) to optimize multi-recipient transfers without OOM
+  if (fileCache.size < 1600) {
+    fileCache.set(chunkIndex, chunk);
+  }
+  return chunk;
+}
+
+export function clearFileChunkCache(file: File | Blob): void {
+  const fileKey = `${(file as File).name || 'file'}_${file.size}_${(file as File).lastModified || 0}`;
+  globalChunkCache.delete(fileKey);
 }
 
 export function reassembleChunks(chunks: ArrayBuffer[], mimeType: string): Blob {

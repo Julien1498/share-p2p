@@ -1,4 +1,4 @@
-import { CHUNK_SIZE, DirectDiskWriter, getChunkCount, readChunk, reassembleChunks } from '../core/chunker';
+import { CHUNK_SIZE, DirectDiskWriter, getChunkCount, readChunkCached, reassembleChunks } from '../core/chunker';
 import { calculateSHA256, verifyChecksum } from '../core/checksum';
 import { ActiveTransfer, P2PFileProtocolMessage } from '../core/types';
 
@@ -83,7 +83,8 @@ export class FileTransferSession {
         }
       }
 
-      const chunk = await readChunk(this.file, i);
+      // Read chunk from shared in-memory cache to prevent re-reading from disk for multi-recipients
+      const chunk = await readChunkCached(this.file, i);
       sendData(this.activeTransfer.peerId, {
         type: 'FILE_CHUNK',
         fileId: this.activeTransfer.fileId,
