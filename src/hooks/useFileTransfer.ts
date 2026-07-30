@@ -46,7 +46,7 @@ export function useFileTransfer(
     };
   }, [transfers]);
 
-  // Broadcast or route packet across PeerJS network
+  // Targeted packet routing across PeerJS connections
   const sendP2PData = useCallback(
     (targetPeerId: string | undefined, data: P2PFileProtocolMessage) => {
       if (!peerManager) return;
@@ -58,7 +58,16 @@ export function useFileTransfer(
       };
 
       if (isHost) {
-        peerManager.broadcast(packet);
+        if (targetPeerId && targetPeerId !== 'ALL') {
+          const conn = peerManager.connections?.get(targetPeerId);
+          if (conn && conn.open) {
+            conn.send(packet);
+          } else {
+            peerManager.broadcast(packet);
+          }
+        } else {
+          peerManager.broadcast(packet);
+        }
       } else {
         peerManager.sendToHost('FILE_TRANSFER_PACKET', packet);
       }
@@ -184,7 +193,7 @@ export function useFileTransfer(
     [sendP2PData, updateTransferState, peerManager]
   );
 
-  // Accept a pending file offer (triggers Chrome Native Download Bar Stream Bridge)
+  // Accept a pending file offer (triggers Chrome Native Download Bar Stream Bridge or Firefox Blob Accumulator)
   const acceptOffer = useCallback(
     async (fileId: string) => {
       const offer = pendingOffers.find((o) => o.fileId === fileId);
@@ -269,7 +278,12 @@ export function useFileTransfer(
         }
 
         if (isHost && targetPeerId !== 'ALL' && targetPeerId !== myPeerId) {
-          peerManager.broadcast(packet, senderPeerId);
+          const conn = peerManager.connections?.get(targetPeerId);
+          if (conn && conn.open) {
+            conn.send(packet);
+          } else {
+            peerManager.broadcast(packet, senderPeerId);
+          }
         }
       }
     };

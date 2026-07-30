@@ -41,6 +41,9 @@ export async function createNativeChromeDownloadWriter(
   mimeType: string
 ): Promise<DirectDiskWriter | null> {
   if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.controller) {
+    const isFirefox = /firefox/i.test(navigator.userAgent);
+    if (isFirefox) return null; // Skip Chromium-only ServiceWorker iframe stream bridge on Firefox
+
     try {
       const streamId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
