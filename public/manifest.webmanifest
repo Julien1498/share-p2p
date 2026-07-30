@@ -1,0 +1,16 @@
+{
+  "name": "DropP2P - Transfert de Fichiers P2P",
+  "short_name": "DropP2P",
+  "description": "Transfert de fichiers ultra-rapide et privé entre navigateurs en P2P",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
