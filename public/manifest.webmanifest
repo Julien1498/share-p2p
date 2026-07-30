@@ -1,6 +1,6 @@
 {
-  "name": "DropP2P - Transfert de Fichiers P2P",
-  "short_name": "DropP2P",
+  "name": "ShareP2P - Transfert de Fichiers P2P",
+  "short_name": "ShareP2P",
   "description": "Transfert de fichiers ultra-rapide et privé entre navigateurs en P2P",
   "start_url": "./",
   "display": "standalone",

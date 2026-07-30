@@ -21,7 +21,7 @@ export default function App() {
   });
 
   const peer = usePeer({
-    namespacePrefix: 'dropp2p',
+    namespacePrefix: 'sharep2p',
     playerName: userProfile.name,
     playerAvatar: userProfile.avatar,
   });
@@ -82,7 +82,7 @@ export default function App() {
               <Zap className="h-10 w-10 text-white" />
             </div>
             <h1 className="text-3xl font-extrabold bg-gradient-to-r from-sky-400 via-indigo-200 to-white bg-clip-text text-transparent">
-              DropP2P
+              ShareP2P
             </h1>
             <p className="text-sm text-slate-400">
               Transfert de fichiers ultra-rapide entre navigateurs sans serveur intermédiaire.
@@ -91,7 +91,7 @@ export default function App() {
 
           <div className="glass-panel p-6 rounded-2xl shadow-2xl border border-slate-800">
             <P2PlayLobby
-              title="DropP2P"
+              title="ShareP2P"
               subtitle="Transfert P2P Direct"
               status={peer.status}
               error={peer.error}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, QrCode, LogOut, Check, ShieldCheck, Zap } from 'lucide-react';
+import { Copy, QrCode, LogOut, Check, Zap } from 'lucide-react';
 import { copyRoomUrlToClipboard } from 'p2play-core/url';
 
 interface HeaderProps {
@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <h1 className="text-xl font-bold bg-gradient-to-r from-sky-400 via-indigo-300 to-white bg-clip-text text-transparent">
-              DropP2P
+              ShareP2P
             </h1>
             <p className="text-xs text-slate-400 hidden sm:block">
               Transfert WebRTC direct & sécurisé
