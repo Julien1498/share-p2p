@@ -1,4 +1,6 @@
 export const CHUNK_SIZE = 256 * 1024; // 256 KiB high-throughput WebRTC chunk size
+export const MAX_RAM_CACHE_BYTES = 500 * 1024 * 1024; // 500 MB shared RAM cache threshold
+export const MAX_CACHE_CHUNKS = Math.floor(MAX_RAM_CACHE_BYTES / CHUNK_SIZE); // 2000 chunks
 
 export function getChunkCount(fileSize: number): number {
   return Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
@@ -23,7 +25,7 @@ export async function readChunk(file: File | Blob, chunkIndex: number): Promise<
 }
 
 /**
- * Shared in-memory chunk cache manager with a sliding ring buffer (max 100 MB).
+ * Shared in-memory chunk cache manager with a 500 MB sliding ring buffer.
  */
 export async function readChunkCached(file: File | Blob, chunkIndex: number): Promise<ArrayBuffer> {
   const fileKey = `${(file as File).name || 'file'}_${file.size}_${(file as File).lastModified || 0}`;
@@ -39,8 +41,8 @@ export async function readChunkCached(file: File | Blob, chunkIndex: number): Pr
 
   const chunk = await readChunk(file, chunkIndex);
   
-  // Maintain a 100 MB sliding ring buffer (400 chunks of 256 KiB) to optimize RAM without OOM
-  if (fileCache.size >= 400) {
+  // Maintain a 500 MB sliding ring buffer (2000 chunks of 256 KiB)
+  if (fileCache.size >= MAX_CACHE_CHUNKS) {
     const oldestChunkIndex = fileCache.keys().next().value;
     if (oldestChunkIndex !== undefined) {
       fileCache.delete(oldestChunkIndex);
@@ -56,8 +58,8 @@ export function getFileCacheStats(fileName: string, fileSize: number, lastModifi
   const totalChunks = getChunkCount(fileSize);
   const cachedChunks = fileCache ? fileCache.size : 0;
   const cachedBytes = Math.min(fileSize, cachedChunks * CHUNK_SIZE);
-  const percent = totalChunks > 0 ? Math.min(100, Math.round((cachedChunks / totalChunks) * 100)) : 0;
-  const isCapReached = cachedChunks >= 400;
+  const percent = totalChunks > 0 ? Math.min(100, Math.round((cachedBytes / fileSize) * 100)) : 0;
+  const isCapReached = cachedChunks >= MAX_CACHE_CHUNKS;
   return { cachedChunks, totalChunks, percent, cachedBytes, isCapReached };
 }
 
