@@ -26,9 +26,6 @@ export const TransferList: React.FC<TransferListProps> = ({
       <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
         {transfers.map((t) => {
           const percent = t.totalBytes > 0 ? Math.min(100, Math.round((t.bytesTransferred / t.totalBytes) * 100)) : 0;
-          const rawPercent = t.rawBytesSent !== undefined && t.totalBytes > 0 
-            ? Math.min(100, Math.round((t.rawBytesSent / t.totalBytes) * 100)) 
-            : percent;
           const isSend = t.direction === 'send';
 
           return (
@@ -92,7 +89,7 @@ export const TransferList: React.FC<TransferListProps> = ({
                   {/* Primary Progress (Real network delivery to Client) */}
                   <div className="flex justify-between text-xs text-slate-300 font-mono">
                     <span className="font-medium text-sky-400">
-                      {isSend ? `Reçu client: ${percent}%` : `Téléchargé: ${percent}%`} ({formatBytes(t.bytesTransferred)})
+                      {isSend ? `Reçu par ${t.peerName}: ${percent}%` : `Téléchargé: ${percent}%`} ({formatBytes(t.bytesTransferred)})
                     </span>
                     <span>{formatSpeed(t.speedBytesPerSec)} • ETA {formatETA(t.etaSeconds)}</span>
                   </div>
@@ -104,14 +101,14 @@ export const TransferList: React.FC<TransferListProps> = ({
                     />
                   </div>
 
-                  {/* Secondary Buffer Progress (For Sender local buffer visibility) */}
-                  {isSend && t.rawBytesSent !== undefined && (
+                  {/* WebRTC Socket Buffer Status (Byte Queue) */}
+                  {isSend && t.bufferedBytes !== undefined && t.bufferedBytes > 0 && (
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-800/40">
                       <span className="flex items-center gap-1 text-indigo-300 font-medium">
-                        <Zap className="h-3 w-3 text-amber-400" /> Tampon d'envoi local: {rawPercent}%
+                        <Zap className="h-3 w-3 text-amber-400 animate-pulse" /> File d'attente WebRTC (Carte réseau) :
                       </span>
-                      <span className="text-slate-400 font-mono">
-                        En file d'attente: {formatBytes(t.bufferedBytes || 0)}
+                      <span className="text-amber-300 font-mono font-medium">
+                        {formatBytes(t.bufferedBytes)} en cours d'envoi
                       </span>
                     </div>
                   )}
