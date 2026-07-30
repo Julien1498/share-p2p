@@ -109,7 +109,7 @@ export const TransferList: React.FC<TransferListProps> = ({
                       <span className="flex items-center gap-1 text-indigo-300 font-medium">
                         <Zap className="h-3 w-3 text-amber-400 animate-pulse" />
                         {cacheStats.isCapReached
-                          ? 'Tampon RAM glissant (max 500 Mo)'
+                          ? 'Tampon RAM glissant (max 2 Go)'
                           : `Tampon RAM partagé en mémoire : ${cacheStats.percent}%`}
                       </span>
                       <span className="text-amber-300 font-mono font-medium">
