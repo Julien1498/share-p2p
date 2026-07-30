@@ -62,7 +62,7 @@ export class FileTransferSession {
     let lastTime = Date.now();
     let lastBytes = 0;
 
-    const MAX_BUFFERED_BYTES = 2 * 1024 * 1024; // 2 MB WebRTC socket buffer limit
+    const MAX_BUFFERED_BYTES = 1.5 * 1024 * 1024; // 1.5 MB WebRTC socket buffer limit
 
     for (let i = 0; i < totalChunks; i++) {
       if (this.isCancelled) {
@@ -93,22 +93,26 @@ export class FileTransferSession {
       });
 
       bytesSent += chunk.byteLength;
-      this.activeTransfer.bytesTransferred = bytesSent;
+      
+      // Accurately measure bytes actually transmitted over the network (deducting unsent WebRTC buffer)
+      const currentBuffered = getBufferedAmount ? getBufferedAmount() : 0;
+      const effectiveSent = Math.max(0, bytesSent - currentBuffered);
+      this.activeTransfer.bytesTransferred = effectiveSent;
 
       const now = Date.now();
       const elapsedSec = (now - lastTime) / 1000;
 
       if (elapsedSec >= 0.5 || i === totalChunks - 1) {
-        const speed = (bytesSent - lastBytes) / elapsedSec;
-        const remainingBytes = this.file.size - bytesSent;
+        const speed = (effectiveSent - lastBytes) / elapsedSec;
+        const remainingBytes = this.file.size - effectiveSent;
         const eta = speed > 0 ? remainingBytes / speed : 0;
 
         this.activeTransfer.speedBytesPerSec = speed;
         this.activeTransfer.etaSeconds = eta;
-        onProgress(bytesSent, speed, eta);
+        onProgress(effectiveSent, speed, eta);
 
         lastTime = now;
-        lastBytes = bytesSent;
+        lastBytes = effectiveSent;
       }
 
       if (i % 30 === 0) {
