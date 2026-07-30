@@ -44,7 +44,7 @@ export class FileTransferSession {
    */
   public async startSending(
     sendData: (peerId: string, data: P2PFileProtocolMessage) => void,
-    onProgress: (bytesSent: number, speed: number, eta: number) => void,
+    onProgress: (bytesSent: number, speed: number, eta: number, rawSent?: number, buffered?: number) => void,
     getBufferedAmount?: () => number
   ): Promise<void> {
     if (!this.file) throw new Error('No file attached to transfer session');
@@ -94,9 +94,11 @@ export class FileTransferSession {
 
       bytesSent += chunk.byteLength;
       
-      // Accurately measure bytes actually transmitted over the network (deducting unsent WebRTC buffer)
       const currentBuffered = getBufferedAmount ? getBufferedAmount() : 0;
       const effectiveSent = Math.max(0, bytesSent - currentBuffered);
+      
+      this.activeTransfer.rawBytesSent = bytesSent;
+      this.activeTransfer.bufferedBytes = currentBuffered;
       this.activeTransfer.bytesTransferred = effectiveSent;
 
       const now = Date.now();
@@ -109,7 +111,7 @@ export class FileTransferSession {
 
         this.activeTransfer.speedBytesPerSec = speed;
         this.activeTransfer.etaSeconds = eta;
-        onProgress(effectiveSent, speed, eta);
+        onProgress(effectiveSent, speed, eta, bytesSent, currentBuffered);
 
         lastTime = now;
         lastBytes = effectiveSent;

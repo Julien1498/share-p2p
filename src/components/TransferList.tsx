@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActiveTransfer } from '../core/types';
 import { formatBytes, formatETA, formatSpeed } from '../core/formatters';
-import { ArrowUpRight, ArrowDownLeft, XCircle, CheckCircle2, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, XCircle, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Zap } from 'lucide-react';
 
 interface TransferListProps {
   transfers: ActiveTransfer[];
@@ -26,6 +26,9 @@ export const TransferList: React.FC<TransferListProps> = ({
       <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
         {transfers.map((t) => {
           const percent = t.totalBytes > 0 ? Math.min(100, Math.round((t.bytesTransferred / t.totalBytes) * 100)) : 0;
+          const rawPercent = t.rawBytesSent !== undefined && t.totalBytes > 0 
+            ? Math.min(100, Math.round((t.rawBytesSent / t.totalBytes) * 100)) 
+            : percent;
           const isSend = t.direction === 'send';
 
           return (
@@ -79,17 +82,33 @@ export const TransferList: React.FC<TransferListProps> = ({
 
               {/* Progress Bar & Speed */}
               {t.status === 'transferring' && (
-                <div className="space-y-1.5 mt-3">
-                  <div className="flex justify-between text-xs text-slate-400 font-mono">
-                    <span>{percent}% ({formatBytes(t.bytesTransferred)})</span>
+                <div className="space-y-2 mt-3">
+                  {/* Primary Progress (Real network delivery to Client) */}
+                  <div className="flex justify-between text-xs text-slate-300 font-mono">
+                    <span className="font-medium text-sky-400">
+                      {isSend ? `Reçu client: ${percent}%` : `Téléchargé: ${percent}%`} ({formatBytes(t.bytesTransferred)})
+                    </span>
                     <span>{formatSpeed(t.speedBytesPerSec)} • ETA {formatETA(t.etaSeconds)}</span>
                   </div>
+
                   <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
                     <div
                       className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full transition-all duration-300"
                       style={{ width: `${percent}%` }}
                     />
                   </div>
+
+                  {/* Secondary Buffer Progress (For Sender local buffer visibility) */}
+                  {isSend && t.rawBytesSent !== undefined && (
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-800/40">
+                      <span className="flex items-center gap-1 text-indigo-300 font-medium">
+                        <Zap className="h-3 w-3 text-amber-400" /> Tampon d'envoi local: {rawPercent}%
+                      </span>
+                      <span className="text-slate-400 font-mono">
+                        En file d'attente: {formatBytes(t.bufferedBytes || 0)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -19,7 +19,9 @@ export interface ActiveTransfer {
   direction: TransferDirection;
   peerId: string;
   peerName: string;
-  bytesTransferred: number;
+  bytesTransferred: number; // Effective bytes delivered over network to client
+  rawBytesSent?: number;    // Raw bytes loaded into local buffer
+  bufferedBytes?: number;   // Current bytes waiting in local WebRTC socket buffer
   totalBytes: number;
   status: TransferStatus;
   speedBytesPerSec: number;
