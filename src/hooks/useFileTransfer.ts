@@ -121,9 +121,11 @@ export function useFileTransfer(
           item.session
             .startSending(
               (targetId, data) => sendP2PData(targetId, data),
-              (bytesSent, speed, eta) => {
+              (bytesSent, speed, eta, rawSent, buffered) => {
                 updateTransferState(fileId, {
                   bytesTransferred: bytesSent,
+                  rawBytesSent: rawSent,
+                  bufferedBytes: buffered,
                   speedBytesPerSec: speed,
                   etaSeconds: eta,
                   status: 'transferring',
@@ -186,7 +188,10 @@ export function useFileTransfer(
         const item = sessionsRef.current.get(fileId);
         if (item) {
           item.session.cancel();
-          updateTransferState(fileId, { status: 'cancelled' });
+          updateTransferState(fileId, {
+            status: 'cancelled',
+            cancelReason: reason || 'Annulé par l\'autre utilisateur',
+          });
         }
       }
     },
@@ -393,14 +398,21 @@ export function useFileTransfer(
       const item = sessionsRef.current.get(fileId);
       if (item) {
         item.session.cancel();
-        updateTransferState(fileId, { status: 'cancelled' });
+        const isSend = item.session.transfer.direction === 'send';
+        const selfReason = isSend ? "Annulé par vous (Expéditeur)" : "Annulé par vous (Destinataire)";
+        const remoteReason = isSend
+          ? `Annulé par l'expéditeur (${myPeerName})`
+          : `Annulé par le destinataire (${myPeerName})`;
+
+        updateTransferState(fileId, { status: 'cancelled', cancelReason: selfReason });
         sendP2PData(item.session.transfer.peerId, {
           type: 'TRANSFER_CANCEL',
           fileId,
+          reason: remoteReason,
         });
       }
     },
-    [sendP2PData, updateTransferState]
+    [myPeerName, sendP2PData, updateTransferState]
   );
 
   return {

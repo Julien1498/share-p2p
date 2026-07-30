@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActiveTransfer } from '../core/types';
 import { formatBytes, formatETA, formatSpeed } from '../core/formatters';
-import { ArrowUpRight, ArrowDownLeft, XCircle, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Zap } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, XCircle, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Zap, Ban } from 'lucide-react';
 
 interface TransferListProps {
   transfers: ActiveTransfer[];
@@ -63,18 +63,24 @@ export const TransferList: React.FC<TransferListProps> = ({
                       <AlertCircle className="h-3.5 w-3.5" /> Échec
                     </span>
                   )}
+                  {t.status === 'rejected' && (
+                    <span className="flex items-center gap-1 text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-md">
+                      <Ban className="h-3.5 w-3.5" /> Refusé par le destinataire
+                    </span>
+                  )}
                   {t.status === 'cancelled' && (
-                    <span className="text-xs text-slate-500 bg-slate-800 px-2.5 py-1 rounded-md">
-                      Annulé
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-md">
+                      <XCircle className="h-3.5 w-3.5" />
+                      {t.cancelReason || 'Transfert annulé'}
                     </span>
                   )}
                   {t.status === 'transferring' && (
                     <button
                       onClick={() => onCancelTransfer(t.fileId)}
                       title="Annuler le transfert"
-                      className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors"
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 text-slate-300 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-md transition-colors font-medium"
                     >
-                      <XCircle className="h-4 w-4" />
+                      <XCircle className="h-3.5 w-3.5" /> Annuler
                     </button>
                   )}
                 </div>

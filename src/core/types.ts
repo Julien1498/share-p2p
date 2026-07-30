@@ -31,6 +31,7 @@ export interface ActiveTransfer {
   chunksReceived?: ArrayBuffer[];
   receivedBlobUrl?: string;
   error?: string;
+  cancelReason?: string;
   checksumValidated?: boolean;
 }
 
