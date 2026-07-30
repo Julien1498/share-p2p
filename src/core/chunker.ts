@@ -13,42 +13,6 @@ export function stringToHash(str: string): number {
   return hash >>> 0;
 }
 
-export function createBinaryChunkPacket(
-  fileIdHash: number,
-  chunkIndex: number,
-  totalChunks: number,
-  chunkData: ArrayBuffer
-): ArrayBuffer {
-  const packet = new ArrayBuffer(16 + chunkData.byteLength);
-  const view = new DataView(packet);
-  view.setUint32(0, 0x44524F50, false); // Magic "DROP"
-  view.setUint32(4, fileIdHash, false);
-  view.setUint32(8, chunkIndex, false);
-  view.setUint32(12, totalChunks, false);
-
-  new Uint8Array(packet, 16).set(new Uint8Array(chunkData));
-  return packet;
-}
-
-export function parseBinaryChunkPacket(buffer: ArrayBuffer): {
-  fileIdHash: number;
-  chunkIndex: number;
-  totalChunks: number;
-  chunkData: ArrayBuffer;
-} | null {
-  if (buffer.byteLength < 16) return null;
-  const view = new DataView(buffer);
-  const magic = view.getUint32(0, false);
-  if (magic !== 0x44524F50) return null;
-
-  const fileIdHash = view.getUint32(4, false);
-  const chunkIndex = view.getUint32(8, false);
-  const totalChunks = view.getUint32(12, false);
-  const chunkData = buffer.slice(16);
-
-  return { fileIdHash, chunkIndex, totalChunks, chunkData };
-}
-
 const globalChunkCache = new Map<string, Map<number, ArrayBuffer>>();
 
 export async function readChunk(file: File | Blob, chunkIndex: number): Promise<ArrayBuffer> {
@@ -59,7 +23,7 @@ export async function readChunk(file: File | Blob, chunkIndex: number): Promise<
 }
 
 /**
- * Shared in-memory chunk cache manager across concurrent P2P transfers of the same file.
+ * Shared in-memory chunk cache manager with a sliding ring buffer (max 100 MB).
  */
 export async function readChunkCached(file: File | Blob, chunkIndex: number): Promise<ArrayBuffer> {
   const fileKey = `${(file as File).name || 'file'}_${file.size}_${(file as File).lastModified || 0}`;
@@ -75,21 +39,26 @@ export async function readChunkCached(file: File | Blob, chunkIndex: number): Pr
 
   const chunk = await readChunk(file, chunkIndex);
   
-  // Cache up to 100 MB (~400 chunks of 256 KiB) to optimize multi-recipient transfers without OOM
-  if (fileCache.size < 400) {
-    fileCache.set(chunkIndex, chunk);
+  // Maintain a 100 MB sliding ring buffer (400 chunks of 256 KiB) to optimize RAM without OOM
+  if (fileCache.size >= 400) {
+    const oldestChunkIndex = fileCache.keys().next().value;
+    if (oldestChunkIndex !== undefined) {
+      fileCache.delete(oldestChunkIndex);
+    }
   }
+  fileCache.set(chunkIndex, chunk);
   return chunk;
 }
 
-export function getFileCacheStats(fileName: string, fileSize: number, lastModified?: number): { cachedChunks: number; totalChunks: number; percent: number; cachedBytes: number } {
+export function getFileCacheStats(fileName: string, fileSize: number, lastModified?: number): { cachedChunks: number; totalChunks: number; percent: number; cachedBytes: number; isCapReached: boolean } {
   const fileKey = `${fileName}_${fileSize}_${lastModified || 0}`;
   const fileCache = globalChunkCache.get(fileKey);
   const totalChunks = getChunkCount(fileSize);
   const cachedChunks = fileCache ? fileCache.size : 0;
   const cachedBytes = Math.min(fileSize, cachedChunks * CHUNK_SIZE);
   const percent = totalChunks > 0 ? Math.min(100, Math.round((cachedChunks / totalChunks) * 100)) : 0;
-  return { cachedChunks, totalChunks, percent, cachedBytes };
+  const isCapReached = cachedChunks >= 400;
+  return { cachedChunks, totalChunks, percent, cachedBytes, isCapReached };
 }
 
 export function clearFileChunkCache(file: File | Blob): void {

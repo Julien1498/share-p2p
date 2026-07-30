@@ -107,10 +107,13 @@ export const TransferList: React.FC<TransferListProps> = ({
                   {isSend && cacheStats && cacheStats.cachedBytes > 0 && (
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-800/40">
                       <span className="flex items-center gap-1 text-indigo-300 font-medium">
-                        <Zap className="h-3 w-3 text-amber-400 animate-pulse" /> Tampon RAM partagé en mémoire : {cacheStats.percent}%
+                        <Zap className="h-3 w-3 text-amber-400 animate-pulse" />
+                        {cacheStats.isCapReached
+                          ? 'Tampon RAM glissant (max 100 Mo)'
+                          : `Tampon RAM partagé en mémoire : ${cacheStats.percent}%`}
                       </span>
                       <span className="text-amber-300 font-mono font-medium">
-                        {formatBytes(cacheStats.cachedBytes)} en RAM (prêt pour tous)
+                        {formatBytes(cacheStats.cachedBytes)} prêts en RAM (pour tous)
                       </span>
                     </div>
                   )}
