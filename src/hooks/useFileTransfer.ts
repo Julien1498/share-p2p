@@ -29,6 +29,20 @@ export function useFileTransfer(
   const membersMapRef = useRef<Map<string, RoomMember>>(new Map());
   const lastProgressAckRef = useRef<Map<string, number>>(new Map());
 
+  // Prevent p2play-core heartbeat timeout during heavy file transfer streams
+  const touchPeerActivity = useCallback(
+    (peerId?: string) => {
+      if (!peerManager || !peerManager.lastPongReceived) return;
+      const now = Date.now();
+      if (peerId) peerManager.lastPongReceived.set(peerId, now);
+      if (peerManager.hostPeerId) peerManager.lastPongReceived.set(peerManager.hostPeerId, now);
+      for (const [key] of peerManager.connections || []) {
+        peerManager.lastPongReceived.set(key, now);
+      }
+    },
+    [peerManager]
+  );
+
   // Prevent browser tab and screen from sleeping during active file transfers
   useEffect(() => {
     const hasActiveTransfers = transfers.some((t) => t.status === 'transferring');
@@ -51,6 +65,7 @@ export function useFileTransfer(
   const sendP2PData = useCallback(
     (targetPeerId: string | undefined, data: P2PFileProtocolMessage) => {
       if (!peerManager) return;
+      touchPeerActivity(targetPeerId);
       const packet = {
         type: 'FILE_TRANSFER_PACKET',
         senderPeerId: myPeerId,
@@ -73,13 +88,14 @@ export function useFileTransfer(
         peerManager.sendToHost('FILE_TRANSFER_PACKET', packet);
       }
     },
-    [peerManager, myPeerId, isHost]
+    [peerManager, myPeerId, isHost, touchPeerActivity]
   );
 
   // Send raw ArrayBuffer for zero-copy binary streaming (maximum Fiber throughput)
   const sendRawBinary = useCallback(
     (targetPeerId: string, buffer: ArrayBuffer) => {
       if (!peerManager) return;
+      touchPeerActivity(targetPeerId);
       const conn = peerManager.connections?.get(targetPeerId);
       if (conn && conn.open) {
         conn.send(buffer);
@@ -87,7 +103,7 @@ export function useFileTransfer(
         peerManager.broadcast(buffer);
       }
     },
-    [peerManager, isHost]
+    [peerManager, isHost, touchPeerActivity]
   );
 
   const updateTransferState = useCallback((fileId: string, patch: Partial<ActiveTransfer>) => {
@@ -99,6 +115,7 @@ export function useFileTransfer(
   // Handle incoming raw binary WebRTC chunk packets
   const handleRawBinaryPacket = useCallback(
     async (fromPeerId: string, buffer: ArrayBuffer) => {
+      touchPeerActivity(fromPeerId);
       const parsed = parseBinaryChunkPacket(buffer);
       if (!parsed) return;
 
@@ -155,13 +172,14 @@ export function useFileTransfer(
         }
       }
     },
-    [sendP2PData, updateTransferState]
+    [sendP2PData, updateTransferState, touchPeerActivity]
   );
 
   // Handle incoming protocol messages
   const handleP2PMessage = useCallback(
     async (fromPeerId: string, msg: P2PFileProtocolMessage) => {
       if (!msg || !msg.type || !msg.fileId) return;
+      touchPeerActivity(fromPeerId);
       const { type, fileId, metadata, bytesReceived, reason } = msg;
 
       if (type === 'FILE_OFFER' && metadata) {
@@ -253,7 +271,7 @@ export function useFileTransfer(
         }
       }
     },
-    [sendP2PData, sendRawBinary, updateTransferState, peerManager]
+    [sendP2PData, sendRawBinary, updateTransferState, peerManager, touchPeerActivity]
   );
 
   // Accept a pending file offer (triggers Chrome Native Download Bar Stream Bridge or Firefox Blob Accumulator)
@@ -314,6 +332,8 @@ export function useFileTransfer(
     const processPacket = (packet: any) => {
       if (!packet) return;
 
+      touchPeerActivity(packet.senderPeerId);
+
       if (packet instanceof ArrayBuffer || packet?.byteLength || packet?.buffer) {
         const rawBuf = packet.buffer || packet;
         handleRawBinaryPacket(packet.senderPeerId || 'host', rawBuf);
@@ -371,7 +391,7 @@ export function useFileTransfer(
       };
       peerManager.sendToHost('PEER_INFO_ANNOUNCE', { peerId: myPeerId, name: myPeerName });
     }
-  }, [peerManager, myPeerId, myPeerName, isHost, handleP2PMessage, handleRawBinaryPacket]);
+  }, [peerManager, myPeerId, myPeerName, isHost, handleP2PMessage, handleRawBinaryPacket, touchPeerActivity]);
 
   // Host member management
   useEffect(() => {
