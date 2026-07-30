@@ -1,4 +1,4 @@
-export const CHUNK_SIZE = 64 * 1024; // 64 KiB WebRTC chunk size
+export const CHUNK_SIZE = 256 * 1024; // 256 KiB high-throughput WebRTC chunk size
 
 export function getChunkCount(fileSize: number): number {
   return Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
@@ -30,8 +30,8 @@ export async function readChunkCached(file: File | Blob, chunkIndex: number): Pr
 
   const chunk = await readChunk(file, chunkIndex);
   
-  // Cache up to 100 MB (~1600 chunks) to optimize multi-recipient transfers without OOM
-  if (fileCache.size < 1600) {
+  // Cache up to 100 MB (~400 chunks of 256 KiB) to optimize multi-recipient transfers without OOM
+  if (fileCache.size < 400) {
     fileCache.set(chunkIndex, chunk);
   }
   return chunk;

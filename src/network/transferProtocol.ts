@@ -40,7 +40,7 @@ export class FileTransferSession {
   }
 
   /**
-   * Streams a file chunk by chunk over WebRTC DataConnection with backpressure flow control.
+   * Streams a file chunk by chunk over WebRTC DataConnection with high-throughput backpressure flow control.
    */
   public async startSending(
     sendData: (peerId: string, data: P2PFileProtocolMessage) => void,
@@ -62,7 +62,7 @@ export class FileTransferSession {
     let lastTime = Date.now();
     let lastBytes = 0;
 
-    const MAX_BUFFERED_BYTES = 1.5 * 1024 * 1024; // 1.5 MB WebRTC socket buffer limit
+    const MAX_BUFFERED_BYTES = 8 * 1024 * 1024; // 8 MB WebRTC socket window for Fiber throughput
 
     for (let i = 0; i < totalChunks; i++) {
       if (this.isCancelled || this.activeTransfer.status === 'cancelled') {
@@ -73,12 +73,12 @@ export class FileTransferSession {
         return;
       }
 
-      // WebRTC DataChannel Flow Control (Backpressure Management)
+      // WebRTC DataChannel High-Throughput Backpressure Management
       if (getBufferedAmount) {
         let buffered = getBufferedAmount();
         while (buffered > MAX_BUFFERED_BYTES) {
           if (this.isCancelled || this.activeTransfer.status === 'cancelled') return;
-          await new Promise((r) => setTimeout(r, 15));
+          await yieldUnthrottled();
           buffered = getBufferedAmount();
         }
       }
@@ -117,7 +117,7 @@ export class FileTransferSession {
         lastBytes = effectiveSent;
       }
 
-      if (i % 30 === 0) {
+      if (i % 20 === 0) {
         await yieldUnthrottled();
       }
     }
