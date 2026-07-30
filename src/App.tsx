@@ -95,6 +95,7 @@ export default function App() {
               subtitle="Transfert P2P Direct"
               status={peer.status}
               error={peer.error}
+              showVoiceToggle={false}
               onHost={handleHost}
               onJoin={handleJoin}
             />
