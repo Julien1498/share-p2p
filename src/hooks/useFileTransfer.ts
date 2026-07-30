@@ -129,10 +129,25 @@ export function useFileTransfer(
           updateTransferState(fileId, { status: 'transferring' });
 
           const getBufferedAmount = () => {
+            if (!peerManager || !peerManager.connections) return 0;
             const targetPeer = item.session.transfer.peerId;
-            const conn = peerManager?.connections?.get(targetPeer);
-            const dc = conn?.dataChannel || conn?._dc;
-            return dc?.bufferedAmount || 0;
+            let conn = peerManager.connections.get(targetPeer);
+            if (!conn && peerManager.hostPeerId) {
+              conn = peerManager.connections.get(peerManager.hostPeerId);
+            }
+            if (!conn) {
+              for (const [key, c] of peerManager.connections.entries()) {
+                if (key.includes(targetPeer) || (c.peer && c.peer.includes(targetPeer))) {
+                  conn = c;
+                  break;
+                }
+              }
+            }
+            const dc = conn?.dataChannel || conn?._dc || (conn as any)?._channel;
+            if (dc && typeof dc.bufferedAmount === 'number') {
+              return dc.bufferedAmount;
+            }
+            return 0;
           };
 
           item.session
@@ -150,14 +165,16 @@ export function useFileTransfer(
               getBufferedAmount
             )
             .then(() => {
-              const currentItem = sessionsRef.current.get(fileId);
-              if (currentItem && currentItem.session.transfer.status !== 'cancelled') {
-                updateTransferState(fileId, { status: 'completed' });
-              }
+              // startSending resolved chunk loading — final completion triggered via TRANSFER_COMPLETE ACK
             })
             .catch((err) => {
               updateTransferState(fileId, { status: 'failed', error: err.message });
             });
+        }
+      } else if (type === 'TRANSFER_COMPLETE') {
+        const item = sessionsRef.current.get(fileId);
+        if (item && item.session && item.session.transfer.status !== 'cancelled') {
+          updateTransferState(fileId, { status: 'completed' });
         }
       } else if (type === 'FILE_REJECT') {
         const item = sessionsRef.current.get(fileId);

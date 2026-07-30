@@ -62,7 +62,7 @@ export class FileTransferSession {
     let lastTime = Date.now();
     let lastBytes = 0;
 
-    const MAX_BUFFERED_BYTES = 8 * 1024 * 1024; // 8 MB WebRTC socket window for Fiber throughput
+    const MAX_BUFFERED_BYTES = 2 * 1024 * 1024; // 2 MB WebRTC socket buffer threshold
 
     for (let i = 0; i < totalChunks; i++) {
       if (this.isCancelled || this.activeTransfer.status === 'cancelled') {
@@ -73,12 +73,12 @@ export class FileTransferSession {
         return;
       }
 
-      // WebRTC DataChannel High-Throughput Backpressure Management
+      // WebRTC DataChannel Backpressure Control
       if (getBufferedAmount) {
         let buffered = getBufferedAmount();
         while (buffered > MAX_BUFFERED_BYTES) {
           if (this.isCancelled || this.activeTransfer.status === 'cancelled') return;
-          await yieldUnthrottled();
+          await new Promise((r) => setTimeout(r, 20));
           buffered = getBufferedAmount();
         }
       }
@@ -86,7 +86,6 @@ export class FileTransferSession {
       // Read chunk from shared in-memory cache
       const chunk = await readChunkCached(this.file, i);
       
-      // Send chunk with valid p2play-core protocol message type
       sendData(this.activeTransfer.peerId, {
         type: 'FILE_CHUNK',
         fileId: this.activeTransfer.fileId,
@@ -119,8 +118,18 @@ export class FileTransferSession {
         lastBytes = effectiveSent;
       }
 
-      if (i % 20 === 0) {
+      if (i % 15 === 0) {
         await yieldUnthrottled();
+      }
+    }
+
+    // Wait for remaining socket buffer to flush completely to the network
+    if (getBufferedAmount) {
+      let buffered = getBufferedAmount();
+      while (buffered > 64 * 1024) {
+        if (this.isCancelled || this.activeTransfer.status === 'cancelled') return;
+        await new Promise((r) => setTimeout(r, 30));
+        buffered = getBufferedAmount();
       }
     }
 
@@ -128,7 +137,6 @@ export class FileTransferSession {
       return;
     }
 
-    this.activeTransfer.status = 'completed';
     sendData(this.activeTransfer.peerId, {
       type: 'TRANSFER_COMPLETE',
       fileId: this.activeTransfer.fileId,
