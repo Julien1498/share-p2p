@@ -36,12 +36,13 @@ export interface ActiveTransfer {
 }
 
 export interface P2PFileProtocolMessage {
-  type: 'FILE_OFFER' | 'FILE_ACCEPT' | 'FILE_REJECT' | 'FILE_CHUNK' | 'TRANSFER_COMPLETE' | 'TRANSFER_CANCEL';
+  type: 'FILE_OFFER' | 'FILE_ACCEPT' | 'FILE_REJECT' | 'FILE_CHUNK' | 'TRANSFER_COMPLETE' | 'TRANSFER_CANCEL' | 'FILE_PROGRESS';
   fileId: string;
   metadata?: FileMetadata;
   chunkIndex?: number;
   totalChunks?: number;
   chunkData?: ArrayBuffer;
+  bytesReceived?: number;
   checksum?: string;
   reason?: string;
 }

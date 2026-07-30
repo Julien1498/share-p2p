@@ -27,6 +27,7 @@ export function useFileTransfer(
 
   const sessionsRef = useRef<Map<string, { session: FileTransferSession; file?: File }>>(new Map());
   const membersMapRef = useRef<Map<string, RoomMember>>(new Map());
+  const lastProgressAckRef = useRef<Map<string, number>>(new Map());
 
   // Prevent browser tab and screen from sleeping during active file transfers
   useEffect(() => {
@@ -85,7 +86,7 @@ export function useFileTransfer(
   const handleP2PMessage = useCallback(
     async (fromPeerId: string, msg: P2PFileProtocolMessage) => {
       if (!msg || !msg.type || !msg.fileId) return;
-      const { type, fileId, metadata, chunkIndex, totalChunks, chunkData, reason } = msg;
+      const { type, fileId, metadata, chunkIndex, totalChunks, chunkData, bytesReceived, reason } = msg;
 
       if (type === 'FILE_OFFER' && metadata) {
         const activeTransfer: ActiveTransfer = {
@@ -123,7 +124,6 @@ export function useFileTransfer(
               (targetId, data) => sendP2PData(targetId, data),
               (bytesSent, speed, eta, rawSent, buffered) => {
                 updateTransferState(fileId, {
-                  bytesTransferred: bytesSent,
                   rawBytesSent: rawSent,
                   bufferedBytes: buffered,
                   speedBytesPerSec: speed,
@@ -134,7 +134,10 @@ export function useFileTransfer(
               getBufferedAmount
             )
             .then(() => {
-              updateTransferState(fileId, { status: 'completed' });
+              const currentItem = sessionsRef.current.get(fileId);
+              if (currentItem && currentItem.session.transfer.status !== 'cancelled') {
+                updateTransferState(fileId, { status: 'completed' });
+              }
             })
             .catch((err) => {
               updateTransferState(fileId, { status: 'failed', error: err.message });
@@ -145,6 +148,12 @@ export function useFileTransfer(
         if (item) {
           item.session.cancel();
           updateTransferState(fileId, { status: 'rejected', error: reason || 'Transfert refusé par le destinataire' });
+        }
+      } else if (type === 'FILE_PROGRESS' && bytesReceived !== undefined) {
+        // Sender updates bytesTransferred to EXACT ACK confirmed by Receiver
+        const item = sessionsRef.current.get(fileId);
+        if (item && item.session && item.session.transfer.status === 'transferring') {
+          updateTransferState(fileId, { bytesTransferred: bytesReceived });
         }
       } else if (type === 'FILE_CHUNK' && chunkData && chunkIndex !== undefined && totalChunks !== undefined) {
         const item = sessionsRef.current.get(fileId);
@@ -159,6 +168,18 @@ export function useFileTransfer(
                 speedBytesPerSec: speed,
                 etaSeconds: eta,
               });
+
+              // Send periodic ACK to Sender so Sender progress is 100% synchronized
+              const now = Date.now();
+              const lastAck = lastProgressAckRef.current.get(fileId) || 0;
+              if (now - lastAck >= 400 || chunkIndex === totalChunks - 1) {
+                lastProgressAckRef.current.set(fileId, now);
+                sendP2PData(item.session.transfer.peerId, {
+                  type: 'FILE_PROGRESS',
+                  fileId,
+                  bytesReceived,
+                });
+              }
             }
           );
 
@@ -188,10 +209,22 @@ export function useFileTransfer(
         const item = sessionsRef.current.get(fileId);
         if (item) {
           item.session.cancel();
-          updateTransferState(fileId, {
-            status: 'cancelled',
-            cancelReason: reason || 'Annulé par l\'autre utilisateur',
-          });
+          setTransfers((prev) =>
+            prev.map((t) => {
+              if (t.fileId === fileId) {
+                // If local user already cancelled this transfer, do not overwrite the local cancel reason
+                if (t.status === 'cancelled' && t.cancelReason) {
+                  return t;
+                }
+                return {
+                  ...t,
+                  status: 'cancelled',
+                  cancelReason: reason || 'Annulé par l\'autre utilisateur',
+                };
+              }
+              return t;
+            })
+          );
         }
       }
     },

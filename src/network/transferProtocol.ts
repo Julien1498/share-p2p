@@ -65,7 +65,7 @@ export class FileTransferSession {
     const MAX_BUFFERED_BYTES = 1.5 * 1024 * 1024; // 1.5 MB WebRTC socket buffer limit
 
     for (let i = 0; i < totalChunks; i++) {
-      if (this.isCancelled) {
+      if (this.isCancelled || this.activeTransfer.status === 'cancelled') {
         sendData(this.activeTransfer.peerId, {
           type: 'TRANSFER_CANCEL',
           fileId: this.activeTransfer.fileId,
@@ -77,7 +77,7 @@ export class FileTransferSession {
       if (getBufferedAmount) {
         let buffered = getBufferedAmount();
         while (buffered > MAX_BUFFERED_BYTES) {
-          if (this.isCancelled) return;
+          if (this.isCancelled || this.activeTransfer.status === 'cancelled') return;
           await new Promise((r) => setTimeout(r, 15));
           buffered = getBufferedAmount();
         }
@@ -99,7 +99,6 @@ export class FileTransferSession {
       
       this.activeTransfer.rawBytesSent = bytesSent;
       this.activeTransfer.bufferedBytes = currentBuffered;
-      this.activeTransfer.bytesTransferred = effectiveSent;
 
       const now = Date.now();
       const elapsedSec = (now - lastTime) / 1000;
@@ -122,6 +121,10 @@ export class FileTransferSession {
       }
     }
 
+    if (this.isCancelled || this.activeTransfer.status === 'cancelled') {
+      return;
+    }
+
     this.activeTransfer.status = 'completed';
     sendData(this.activeTransfer.peerId, {
       type: 'TRANSFER_COMPLETE',
@@ -139,7 +142,7 @@ export class FileTransferSession {
     chunkData: ArrayBuffer,
     onProgress: (bytesReceived: number, speed: number, eta: number) => void
   ): Promise<Blob | null> {
-    if (this.isCancelled) return null;
+    if (this.isCancelled || this.activeTransfer.status === 'cancelled') return null;
 
     if (this.receivedChunkCount === 0) {
       this.activeTransfer.startTime = Date.now();
@@ -162,7 +165,7 @@ export class FileTransferSession {
     const now = Date.now();
     const elapsedSec = (now - (this.activeTransfer.lastUpdateTime || this.activeTransfer.startTime)) / 1000;
 
-    if (elapsedSec >= 0.5 || chunkIndex === totalChunks - 1) {
+    if (elapsedSec >= 0.4 || chunkIndex === totalChunks - 1) {
       const totalElapsed = (now - this.activeTransfer.startTime) / 1000;
       const speed = totalElapsed > 0 ? this.activeTransfer.bytesTransferred / totalElapsed : 0;
       const remainingBytes = this.activeTransfer.totalBytes - this.activeTransfer.bytesTransferred;
