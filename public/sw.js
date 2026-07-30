@@ -53,6 +53,12 @@ self.addEventListener('message', (event) => {
       stream.writer.close().catch(() => {});
       downloadStreams.delete(streamId);
     }
+  } else if (type === 'ABORT_NATIVE_STREAM' || type === 'CANCEL_NATIVE_STREAM') {
+    const stream = downloadStreams.get(streamId);
+    if (stream && stream.writer) {
+      stream.writer.abort(new Error('Download cancelled by user')).catch(() => {});
+      downloadStreams.delete(streamId);
+    }
   }
 });
 

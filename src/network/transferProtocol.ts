@@ -35,7 +35,11 @@ export class FileTransferSession {
     this.isCancelled = true;
     this.activeTransfer.status = 'cancelled';
     if (this.diskWriter) {
-      this.diskWriter.close().catch(() => {});
+      if (this.diskWriter.abort) {
+        this.diskWriter.abort().catch(() => {});
+      } else {
+        this.diskWriter.close().catch(() => {});
+      }
     }
   }
 

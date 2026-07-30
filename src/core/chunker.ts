@@ -86,6 +86,7 @@ export function triggerBlobDownload(blob: Blob, fileName: string): void {
 export interface DirectDiskWriter {
   writeChunk: (chunk: ArrayBuffer) => Promise<void>;
   close: () => Promise<void>;
+  abort?: () => Promise<void>;
 }
 
 /**
@@ -141,6 +142,19 @@ export async function createNativeChromeDownloadWriter(
             }
           }, 5000);
         },
+        abort: async () => {
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'ABORT_NATIVE_STREAM',
+              streamId,
+            });
+          }
+          setTimeout(() => {
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
+          }, 1000);
+        },
       };
     } catch (err) {
       console.warn('Native Chrome Download stream bridge failed:', err);
@@ -165,6 +179,9 @@ export async function createDirectDiskWriter(fileName: string): Promise<DirectDi
         },
         close: async () => {
           await writable.close();
+        },
+        abort: async () => {
+          await writable.abort();
         },
       };
     } catch (err) {
