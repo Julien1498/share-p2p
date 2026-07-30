@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "npx vite",
     "build": "npx vite build",
+    "build:lib": "npx vite build --mode lib",
     "preview": "vite preview"
   },
   "dependencies": {

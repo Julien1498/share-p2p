@@ -1,0 +1,9 @@
+{
+  "key": "sharep2p",
+  "name": "ShareP2P",
+  "emoji": "📁",
+  "desc": "Transfert de fichiers P2P ultra-rapide sans limite de taille et direct sur disque.",
+  "hasPreConfig": false,
+  "avatars": ["📁", "⚡", "🚀", "💾", "📡", "🛸"],
+  "shellBackground": "radial-gradient(circle at center, #0f172a 0%, #020617 100%)"
+}

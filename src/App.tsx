@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePeer, P2PlayLobby } from 'p2play-core';
 import { TextChatPanel } from 'p2play-core/chat';
-import { extractRoomCodeFromUrl, syncRoomUrlToAddressBar, clearRoomUrlFromAddressBar } from 'p2play-core/url';
+import { syncRoomUrlToAddressBar, clearRoomUrlFromAddressBar } from 'p2play-core/url';
 import { useFileTransfer } from './hooks/useFileTransfer';
 import { Header } from './components/Header';
 import { Dropzone } from './components/Dropzone';
@@ -12,15 +12,30 @@ import { QRCodeModal } from './components/QRCodeModal';
 import { OfferBanner } from './components/OfferBanner';
 import { MessageSquare, Shield, Zap, Sparkles } from 'lucide-react';
 
-export default function App() {
+interface AppProps {
+  isEmbedded?: boolean;
+  externalPeerManager?: any;
+  onExit?: () => void;
+  playerName?: string;
+  playerAvatar?: string;
+}
+
+export default function App({
+  isEmbedded,
+  externalPeerManager,
+  onExit,
+  playerName,
+  playerAvatar,
+}: AppProps) {
   const [showQRCode, setShowQRCode] = useState(false);
   const [activeTab, setActiveTab] = useState<'transfers' | 'chat'>('transfers');
   const [userProfile, setUserProfile] = useState<{ name: string; avatar: string }>({
-    name: 'Utilisateur P2P',
-    avatar: '⚡',
+    name: playerName || 'Utilisateur P2P',
+    avatar: playerAvatar || '⚡',
   });
 
   const peer = usePeer({
+    externalPeerManager,
     namespacePrefix: 'sharep2p',
     playerName: userProfile.name,
     playerAvatar: userProfile.avatar,
@@ -46,17 +61,21 @@ export default function App() {
     peer.isHost
   );
 
-  // Synchronize room URL in address bar when room is joined
+  // Synchronize room URL in address bar when room is joined in standalone mode
   useEffect(() => {
-    if (isJoined && roomCode) {
+    if (isJoined && roomCode && !isEmbedded) {
       syncRoomUrlToAddressBar(roomCode);
     }
-  }, [isJoined, roomCode]);
+  }, [isJoined, roomCode, isEmbedded]);
 
   const handleLeaveRoom = useCallback(() => {
+    if (isEmbedded && onExit) {
+      onExit();
+      return;
+    }
     clearRoomUrlFromAddressBar();
     peer.disconnect();
-  }, [peer]);
+  }, [isEmbedded, onExit, peer]);
 
   const handleFilesSelected = (files: File[], targetPeerId?: string) => {
     files.forEach((file) => offerFile(file, targetPeerId));
