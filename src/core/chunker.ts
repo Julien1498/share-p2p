@@ -37,6 +37,16 @@ export async function readChunkCached(file: File | Blob, chunkIndex: number): Pr
   return chunk;
 }
 
+export function getFileCacheStats(fileName: string, fileSize: number, lastModified?: number): { cachedChunks: number; totalChunks: number; percent: number; cachedBytes: number } {
+  const fileKey = `${fileName}_${fileSize}_${lastModified || 0}`;
+  const fileCache = globalChunkCache.get(fileKey);
+  const totalChunks = getChunkCount(fileSize);
+  const cachedChunks = fileCache ? fileCache.size : 0;
+  const cachedBytes = Math.min(fileSize, cachedChunks * CHUNK_SIZE);
+  const percent = totalChunks > 0 ? Math.min(100, Math.round((cachedChunks / totalChunks) * 100)) : 0;
+  return { cachedChunks, totalChunks, percent, cachedBytes };
+}
+
 export function clearFileChunkCache(file: File | Blob): void {
   const fileKey = `${(file as File).name || 'file'}_${file.size}_${(file as File).lastModified || 0}`;
   globalChunkCache.delete(fileKey);

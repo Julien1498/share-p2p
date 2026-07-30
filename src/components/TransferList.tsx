@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActiveTransfer } from '../core/types';
 import { formatBytes, formatETA, formatSpeed } from '../core/formatters';
+import { getFileCacheStats } from '../core/chunker';
 import { ArrowUpRight, ArrowDownLeft, XCircle, CheckCircle2, AlertCircle, Loader2, ShieldCheck, Zap, Ban } from 'lucide-react';
 
 interface TransferListProps {
@@ -27,6 +28,7 @@ export const TransferList: React.FC<TransferListProps> = ({
         {transfers.map((t) => {
           const percent = t.totalBytes > 0 ? Math.min(100, Math.round((t.bytesTransferred / t.totalBytes) * 100)) : 0;
           const isSend = t.direction === 'send';
+          const cacheStats = isSend ? getFileCacheStats(t.metadata.name, t.metadata.size, t.metadata.lastModified) : null;
 
           return (
             <div
@@ -101,14 +103,14 @@ export const TransferList: React.FC<TransferListProps> = ({
                     />
                   </div>
 
-                  {/* WebRTC Socket Buffer Status (Byte Queue) */}
-                  {isSend && t.bufferedBytes !== undefined && t.bufferedBytes > 0 && (
+                  {/* Shared In-Memory RAM Cache Badge for Uploader */}
+                  {isSend && cacheStats && cacheStats.cachedBytes > 0 && (
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-800/40">
                       <span className="flex items-center gap-1 text-indigo-300 font-medium">
-                        <Zap className="h-3 w-3 text-amber-400 animate-pulse" /> File d'attente WebRTC (Carte réseau) :
+                        <Zap className="h-3 w-3 text-amber-400 animate-pulse" /> Tampon RAM partagé en mémoire : {cacheStats.percent}%
                       </span>
                       <span className="text-amber-300 font-mono font-medium">
-                        {formatBytes(t.bufferedBytes)} en cours d'envoi
+                        {formatBytes(cacheStats.cachedBytes)} en RAM (prêt pour tous)
                       </span>
                     </div>
                   )}
